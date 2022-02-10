@@ -18,26 +18,24 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField]
     private GunData gunData;
     [HideInInspector]
-    private Recoil Recoil;
-    [HideInInspector]
     public float mouseSensitivity = 1f, scopedSensitivity = 0.25f;
     private float xRotation = 0f, mouseX, mouseY;
     [SerializeField]
-    private GameObject lArm, rArm, gunModel;
+    private GameObject lArm, rArm;
+    private GameObject gunModel;
 
     //Sway bullshit
-    private float amount, maxAmount, smoothAmount, rotationAmount, maxRotationAmount, smoothRotation;
-    private bool rotationX, rotationY, rotationZ;
     private Vector3 initSwayPos;
     private Quaternion initSwayRot;
 
     //Recoil bullshit
-    [HideInInspector]
-    public float minRecoilX, minRecoilY, minRecoilZ, maxRecoilX, maxRecoilY, maxRecoilZ, aimMinRecoilX, aimMinRecoilY, aimMinRecoilZ, aimMaxRecoilX, aimMaxRecoilY, aimMaxRecoilZ, snappiness, returnSpeed;
+    private Transform RecoilTransform;
+    private Vector3 currentRotation;
+    private Vector3 targetRotation;
 
     //Movement bullshit
     [HideInInspector]
-    private float gravity = -36.0f, fovMain, fovScoped, smoothingFactor, walkSpeed, walkSpeedAim, sprintSpeed, jumpHeight;
+    private float gravity = -36.0f;
 
     [HideInInspector]
     public bool walking, aiming, sprinting = false;
@@ -47,9 +45,9 @@ public class PlayerMovement : MonoBehaviour
     //Weapon bullshit
     [HideInInspector]
     public float currentAmmo, reserveAmmo, health;
-    private float nextTimeToFire, damage, range, fireRate, magAmmo, reloadTimeEmpty, reloadTimeTactical;
+    private float nextTimeToFire;
     private AudioClip fireSound;
-    private Vector3 normalPosition, aimedPosition, weaponKick, weaponAimKick, weaponKickRot, weaponAimKickRot, boltOffset, initGunBodyPos, initGunMagPos, initGunBoltPos;
+    private Vector3 initGunBodyPos, initGunMagPos, initGunBoltPos;
     private Transform gunBody, gunMag, gunBolt;
     private bool reloading = false;
 
@@ -58,8 +56,8 @@ public class PlayerMovement : MonoBehaviour
 
     void Start()
     {
-        Recoil = GameObject.Find("CameraRot/CameraRecoil").GetComponent<Recoil>();
-        am = GameObject.Find("player").GetComponent<AudioSource>();
+        RecoilTransform = GameObject.Find("CameraRecoil").transform;
+        am = GetComponent<AudioSource>();
 
         initSwayPos = swayer.localPosition;
         initSwayRot = swayer.localRotation;
@@ -89,9 +87,9 @@ public class PlayerMovement : MonoBehaviour
             yield return StartCoroutine(SpawnArms());
 
             rArm = holder.Find("Right Arm(Clone)").gameObject;
-            gunModel = Instantiate(gunModel);
+            gunModel = Instantiate(gunData.gunModel);
             gunModel.transform.parent = rArm.transform;
-            rArm.transform.GetChild(0).localPosition = Vector3.zero;
+            rArm.transform.GetChild(0).localPosition = gunData.weaponPosOffset;
             rArm.transform.GetChild(0).localEulerAngles = gunData.weaponRotOffset;
             rArm.transform.GetChild(0).localScale = new Vector3(0.02f, 0.02f, 0.02f);
         }
@@ -125,25 +123,27 @@ public class PlayerMovement : MonoBehaviour
                 mouseX = Input.GetAxis("Mouse X") * scopedSensitivity;
                 mouseY = Input.GetAxis("Mouse Y") * scopedSensitivity;
 
-                holder.localPosition = Vector3.Slerp(holder.localPosition, aimedPosition, smoothingFactor * Time.deltaTime);
-                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, fovScoped, smoothingFactor * Time.deltaTime);
+                holder.localPosition = Vector3.Slerp(holder.localPosition, gunData.aimedPosition, gunData.scopeSpeed * Time.deltaTime);
+                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, gunData.fovScoped, gunData.scopeSpeed * Time.deltaTime);
             }
             else
             {
                 mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
                 mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
 
-                holder.localPosition = Vector3.Slerp(holder.localPosition, normalPosition, smoothingFactor * Time.deltaTime);
-                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, fovMain, smoothingFactor * Time.deltaTime);
+                Vector3 v = Vector3.zero;
+                float vf = 0;
+                holder.localPosition = Vector3.SmoothDamp(holder.localPosition, gunData.normalPosition, ref v, gunData.scopeSpeed * Time.deltaTime);
+                cam.fieldOfView = Mathf.SmoothDamp(cam.fieldOfView, gunData.fovMain, ref vf, gunData.scopeSpeed * Time.deltaTime);
             }
 
             if (Input.GetButton("Fire1") && Time.time >= nextTimeToFire && currentAmmo > 0f && !reloading)
             {
-                nextTimeToFire = Time.time + 60f / fireRate;
+                nextTimeToFire = Time.time + 60f / gunData.fireRate;
                 Shoot();
             }
 
-            if (Input.GetKeyDown(KeyCode.R) && currentAmmo != magAmmo && reserveAmmo != 0f && !reloading)
+            if (Input.GetKeyDown(KeyCode.R) && currentAmmo != gunData.magAmmo && reserveAmmo != 0f && !reloading)
             {
                 StartCoroutine(Reload());
             }
@@ -152,46 +152,53 @@ public class PlayerMovement : MonoBehaviour
 
             TiltAndSway(mouseX, mouseY);
 
-            gunBolt.localPosition = Vector3.Lerp(gunBolt.localPosition, initGunBoltPos, 20f * Time.deltaTime);
+            gunBolt.localPosition = Vector3.Lerp(gunBolt.localPosition, initGunBoltPos, gunData.boltSpeed * Time.deltaTime);
+
+            targetRotation = Vector3.Lerp(targetRotation, Vector3.zero, gunData.returnSpeed * Time.deltaTime);
+            currentRotation = Vector3.Slerp(currentRotation, targetRotation, gunData.snappiness * Time.fixedDeltaTime);
+            RecoilTransform.localRotation = Quaternion.Euler(currentRotation);
 
             if (reloading)
             {
-                gunMag.transform.localPosition = Vector3.Slerp(gunMag.transform.localPosition, new Vector3(0.333f, 0, 0), Time.deltaTime * 10f);
-                lArm.transform.localPosition = Vector3.Slerp(lArm.transform.localPosition, gunData.lArmOffset - new Vector3(1f, 0, 0), Time.deltaTime * 10f);
+                Vector3 v = Vector3.zero;
+                gunMag.transform.localPosition = Vector3.SmoothDamp(gunMag.transform.localPosition, new Vector3(0.333f, 0, 0), ref v, Time.deltaTime * 10f);
+                lArm.transform.localPosition = Vector3.SmoothDamp(lArm.transform.localPosition, gunData.lArmOffset - new Vector3(1f, 0, 0), ref v, Time.deltaTime * 10f);
             }
             else if (!reloading)
             {
-                gunMag.transform.localPosition = Vector3.Slerp(gunMag.transform.localPosition, Vector3.zero, Time.deltaTime * 20f);
-                lArm.transform.localPosition = Vector3.Slerp(lArm.transform.localPosition, gunData.lArmOffset, Time.deltaTime * 20f);
+                Vector3 v = Vector3.zero;
+                gunMag.transform.localPosition = Vector3.SmoothDamp(gunMag.transform.localPosition, Vector3.zero, ref v, Time.deltaTime * 5f);
+                lArm.transform.localPosition = Vector3.SmoothDamp(lArm.transform.localPosition, gunData.lArmOffset, ref v, Time.deltaTime * 5f);
             }
         }
     }
 
     void Shoot()
     {
-        am.pitch = Random.Range(1.1f, 1.2f);
+        Recoil();
+        am.pitch = Random.Range(1f, 1.15f);
         am.PlayOneShot(fireSound, 0.5f);
-        Recoil.RecoilFire();
-        gunBolt.localPosition = boltOffset;
 
         if (!aiming)
         {
-            swayer.localPosition += weaponKick;
-            swayer.localEulerAngles += weaponKickRot;
+            gunBolt.localPosition = gunData.boltOffset;
+            swayer.localPosition += gunData.weaponKick;
+            swayer.localEulerAngles += gunData.weaponKickRot;
         }
         else
         {
-            swayer.localPosition += weaponAimKick;
-            swayer.localEulerAngles += weaponAimKickRot;
+            gunBolt.localPosition = gunData.boltOffset;
+            swayer.localPosition += gunData.weaponAimKick;
+            swayer.localEulerAngles += gunData.weaponAimKickRot;
         }
 
         RaycastHit hit;
-        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, range))
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, gunData.range))
         {
             Target target = hit.transform.GetComponent<Target>();
             if (target != null)
             {
-                target.TakeDamage(damage);
+                target.TakeDamage(gunData.damage);
             }
 
             GameObject impactGO = Instantiate(impactEffect, hit.point, Quaternion.LookRotation(hit.normal));
@@ -205,14 +212,14 @@ public class PlayerMovement : MonoBehaviour
     {
         reloading = true;
 
-        if (currentAmmo != magAmmo && currentAmmo > 0f)
+        if (currentAmmo != gunData.magAmmo && currentAmmo > 0f)
         {
-            yield return new WaitForSeconds(reloadTimeTactical);
+            yield return new WaitForSeconds(gunData.reloadTimeTactical);
 
-            if (reserveAmmo + currentAmmo > magAmmo)
+            if (reserveAmmo + currentAmmo > gunData.magAmmo)
             {
-                reserveAmmo -= (magAmmo - currentAmmo);
-                currentAmmo = magAmmo;
+                reserveAmmo -= (gunData.magAmmo - currentAmmo);
+                currentAmmo = gunData.magAmmo;
             }
             else
             {
@@ -222,12 +229,12 @@ public class PlayerMovement : MonoBehaviour
         }
         else if (currentAmmo == 0f)
         {
-            yield return new WaitForSeconds(reloadTimeEmpty);
+            yield return new WaitForSeconds(gunData.reloadTimeEmpty);
 
-            if (reserveAmmo + currentAmmo > magAmmo)
+            if (reserveAmmo + currentAmmo > gunData.magAmmo)
             {
-                reserveAmmo -= (magAmmo - currentAmmo);
-                currentAmmo = magAmmo;
+                reserveAmmo -= (gunData.magAmmo - currentAmmo);
+                currentAmmo = gunData.magAmmo;
             }
             else
             {
@@ -238,6 +245,18 @@ public class PlayerMovement : MonoBehaviour
         yield return reloading = false;
     }
 
+    private void Recoil()
+    {
+        if (aiming)
+        {
+            targetRotation += new Vector3(Random.Range(gunData.aimMinRecoil.x, gunData.aimMaxRecoil.x), Random.Range(gunData.aimMinRecoil.y, gunData.aimMaxRecoil.y), Random.Range(gunData.aimMinRecoil.z, gunData.aimMaxRecoil.z));
+        }
+        else
+        {
+            targetRotation += new Vector3(Random.Range(gunData.minRecoil.x, gunData.maxRecoil.x), Random.Range(gunData.minRecoil.y, gunData.maxRecoil.y), Random.Range(gunData.minRecoil.z, gunData.maxRecoil.z));
+        }
+    }
+
     void LockCursor()
     {
         Cursor.lockState = CursorLockMode.Locked;
@@ -245,69 +264,9 @@ public class PlayerMovement : MonoBehaviour
 
     void GetValues()
     {
-        //movement bullshit
-        walkSpeed = gunData.walkSpeed;
-        walkSpeedAim = gunData.walkSpeedAim;
-        sprintSpeed = gunData.sprintSpeed;
-        jumpHeight = gunData.jumpHeight;
-
-        //weapon bullshit
-        damage = gunData.damage;
-        range = gunData.range;
-        fireRate = gunData.fireRate;
         fireSound = gunData.fireSound;
-
         currentAmmo = gunData.magAmmo;
-        magAmmo = gunData.magAmmo;
         reserveAmmo = gunData.reserveAmmo;
-        reloadTimeEmpty = gunData.reloadTimeEmpty;
-        reloadTimeTactical = gunData.reloadTimeTactical;
-
-        fovMain = gunData.fovMain;
-        fovScoped = gunData.fovScoped;
-        smoothingFactor = gunData.smoothingFactor;
-
-        normalPosition = gunData.normalPosition;
-        aimedPosition = gunData.aimedPosition;
-        weaponKick = gunData.weaponKick;
-        weaponAimKick = gunData.weaponAimKick;
-        weaponKickRot = gunData.weaponKickRot;
-        weaponAimKickRot = gunData.weaponAimKickRot;
-        boltOffset = gunData.boltOffset;
-
-        //sway bullshit
-        amount = gunData.amount;
-        maxAmount = gunData.maxAmount;
-
-        rotationAmount = gunData.rotationAmount;
-        maxRotationAmount = gunData.maxRotationAmount;
-        
-        smoothAmount = gunData.smoothAmount;
-        smoothRotation = gunData.smoothRotation;
-
-        //recoil bullshit
-        rotationX = gunData.rotationX;
-        rotationY = gunData.rotationY;
-        rotationZ = gunData.rotationZ;
-
-        minRecoilX = gunData.minRecoil.x;
-        minRecoilY = gunData.minRecoil.y;
-        minRecoilZ = gunData.minRecoil.z;
-        
-        maxRecoilX = gunData.maxRecoil.x;
-        maxRecoilY = gunData.maxRecoil.y;
-        maxRecoilY = gunData.maxRecoil.z;
-
-        aimMinRecoilX = gunData.aimMinRecoil.x;
-        aimMinRecoilY = gunData.aimMinRecoil.y;
-        aimMinRecoilZ = gunData.aimMinRecoil.z;
-                                            
-        aimMaxRecoilX = gunData.aimMaxRecoil.x;
-        aimMaxRecoilY = gunData.aimMaxRecoil.y;
-        aimMaxRecoilZ = gunData.aimMaxRecoil.z;
-
-        snappiness = gunData.snappiness;
-        returnSpeed = gunData.returnSpeed;
     }
 
     void PlayerMove()
@@ -328,14 +287,14 @@ public class PlayerMovement : MonoBehaviour
 
             if (Input.GetButton("Fire2"))
             {
-                characterController.Move(move * walkSpeedAim * Time.deltaTime);
+                characterController.Move(move * gunData.walkSpeedAim * Time.deltaTime);
                 walking = false;
                 sprinting = false;
                 aiming = true;
             }
             else if (Input.GetKey(KeyCode.LeftShift))
             {
-                characterController.Move(move * sprintSpeed * Time.deltaTime);
+                characterController.Move(move * gunData.sprintSpeed * Time.deltaTime);
                 if (move == Vector3.zero)
                 {
                     sprinting = false;
@@ -349,7 +308,7 @@ public class PlayerMovement : MonoBehaviour
             }
             else
             {
-                characterController.Move(move * walkSpeed * Time.deltaTime);
+                characterController.Move(move * gunData.walkSpeed * Time.deltaTime);
                 if (move == Vector3.zero)
                 {
                     walking = false;
@@ -365,7 +324,7 @@ public class PlayerMovement : MonoBehaviour
 
         if (grounded && Input.GetButton("Jump"))
         {
-            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            velocity.y = Mathf.Sqrt(gunData.jumpHeight * -2f * gravity);
         }
 
         velocity.y += gravity * Time.deltaTime;
@@ -384,22 +343,22 @@ public class PlayerMovement : MonoBehaviour
 
     private void TiltAndSway(float x, float y)
     {
-        float tiltY = Mathf.Clamp(-x * rotationAmount, -maxRotationAmount, maxRotationAmount);
-        float tiltX = Mathf.Clamp(-y * rotationAmount, -maxRotationAmount, maxRotationAmount);
+        float tiltY = Mathf.Clamp(-x * gunData.rotationAmount, -gunData.maxRotationAmount, gunData.maxRotationAmount);
+        float tiltX = Mathf.Clamp(-y * gunData.rotationAmount, -gunData.maxRotationAmount, gunData.maxRotationAmount);
 
         Quaternion finalRotation = Quaternion.Euler(new Vector3(
-            rotationX ? -tiltX : 0f,
-            rotationY ? tiltY : 0f,
-            rotationZ ? tiltY : 0
+            gunData.rotationX ? -tiltX : 0f,
+            gunData.rotationY ? tiltY : 0f,
+            gunData.rotationZ ? tiltY : 0
             ));
 
-        swayer.localRotation = Quaternion.Slerp(swayer.localRotation, finalRotation * initSwayRot, Time.smoothDeltaTime * smoothRotation);
+        swayer.localRotation = Quaternion.Slerp(swayer.localRotation, finalRotation * initSwayRot, Time.smoothDeltaTime * gunData.smoothRotation);
 
-        float moveX = Mathf.Clamp(-x * amount, -maxAmount, maxAmount);
-        float moveY = Mathf.Clamp(-y * amount, -maxAmount, maxAmount);
+        float moveX = Mathf.Clamp(-x * gunData.amount, -gunData.maxAmount, gunData.maxAmount);
+        float moveY = Mathf.Clamp(-y * gunData.amount, -gunData.maxAmount, gunData.maxAmount);
 
         Vector3 finalPosition = new Vector3(moveX, moveY, 0);
 
-        swayer.localPosition = Vector3.Lerp(swayer.localPosition, finalPosition + initSwayPos, Time.smoothDeltaTime * smoothAmount);
+        swayer.localPosition = Vector3.Lerp(swayer.localPosition, finalPosition + initSwayPos, Time.smoothDeltaTime * gunData.smoothAmount);
     }
 }
