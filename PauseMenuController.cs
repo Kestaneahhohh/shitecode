@@ -29,7 +29,7 @@ public class PauseMenuController : MonoBehaviour
     private void Start()
     {
         paused = true;
-        player.GetComponent<PlayerMovement>().paused = true;
+        player.GetComponent<Framework>().paused = true;
 
         var root = UIDocument.rootVisualElement;
 
@@ -68,9 +68,9 @@ public class PauseMenuController : MonoBehaviour
         {
             Resume();
 
-            currentAmmo.text = player.GetComponent<PlayerMovement>().currentAmmo.ToString();
-            reserveAmmo.text = player.GetComponent<PlayerMovement>().reserveAmmo.ToString();
-            health.style.width = Length.Percent(player.GetComponent<PlayerMovement>().health);
+            currentAmmo.text = player.GetComponent<Framework>().currentAmmo.ToString();
+            reserveAmmo.text = player.GetComponent<Framework>().reserveAmmo.ToString();
+            health.style.width = Length.Percent(player.GetComponent<Framework>().health);
         } 
         else
         {
@@ -93,8 +93,8 @@ public class PauseMenuController : MonoBehaviour
 
         if (paused && settingsPanel.style.display == DisplayStyle.Flex)
         {
-            player.GetComponent<PlayerMovement>().mouseSensitivity = lookSensitivity.value;
-            player.GetComponent<PlayerMovement>().scopedSensitivity = aimSensitivity.value;
+            player.GetComponent<Framework>().mouseSensitivity = lookSensitivity.value;
+            player.GetComponent<Framework>().scopedSensitivity = aimSensitivity.value;
             
             QualitySettings.SetQualityLevel(qualitySelector.value);
         }
@@ -103,12 +103,12 @@ public class PauseMenuController : MonoBehaviour
     private void Pause()
     {
         paused = true;
-        player.GetComponent<PlayerMovement>().paused = true;
+        player.GetComponent<Framework>().paused = true;
 
         HUD.style.display = DisplayStyle.None;
         mainPanel.style.display = DisplayStyle.Flex;
 
-        player.GetComponent<PlayerMovement>().move = Vector3.zero;
+        player.GetComponent<Framework>().move = Vector3.zero;
         UnityEngine.Cursor.lockState = CursorLockMode.None;
         UnityEngine.Cursor.visible = true;
     }
@@ -116,7 +116,7 @@ public class PauseMenuController : MonoBehaviour
     private void Resume()
     {
         paused = false;
-        player.GetComponent<PlayerMovement>().paused = false;
+        player.GetComponent<Framework>().paused = false;
 
         HUD.style.display = DisplayStyle.Flex;
         mainPanel.style.display = DisplayStyle.None;
@@ -144,8 +144,8 @@ public class PauseMenuController : MonoBehaviour
         mainPanel.style.display = DisplayStyle.None;
         settingsPanel.style.display = DisplayStyle.Flex;
 
-        lookSensitivity.value = player.GetComponent<PlayerMovement>().mouseSensitivity;
-        aimSensitivity.value = player.GetComponent < PlayerMovement>().scopedSensitivity;
+        lookSensitivity.value = player.GetComponent<Framework>().mouseSensitivity;
+        aimSensitivity.value = player.GetComponent < Framework>().scopedSensitivity;
 
         qualitySelector.value = QualitySettings.GetQualityLevel();
     }

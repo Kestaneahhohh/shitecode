@@ -3,9 +3,6 @@
 [CreateAssetMenu(menuName = "Framework/GunData")]
 public class GunData : ScriptableObject
 {
-    public new string name;
-    [Space(20)]
-
     [Header("Movement")]
     public float walkSpeed;
     public float walkSpeedAim;
@@ -36,6 +33,7 @@ public class GunData : ScriptableObject
 
     [Header("Offsets")]
     public Vector3 normalPosition;
+    public Vector3 sprintPosition;
     public Vector3 aimedPosition;
     [Space(20)]
     public Vector3 lArmOffset;
